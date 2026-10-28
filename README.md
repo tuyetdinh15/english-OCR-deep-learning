@@ -84,7 +84,7 @@ và không shuffle. Giữ thang pixel 0–255 như notebook, không chia 255 ho�
 `preprocess_input`. Otsu và dilation dành cho xử lý ảnh văn bản bên ngoài.
 Không xuất bản sao ảnh resize; CSV trỏ tới ảnh gốc và xử lý ảnh diễn ra lúc train.
 
-Cả 5 script train hiện có gọi chung `split_dataframe`, nên đều dùng tỷ lệ mặc định
+Cả 4 script train hiện có gọi chung `split_dataframe`, nên đều dùng tỷ lệ mặc định
 80/10/10. Hàm trả về theo thứ tự **train, validation, test**. Có thể sử dụng trực tiếp
 các tập đã lưu:
 
@@ -99,11 +99,14 @@ testing = pd.read_csv(PROCESSED_DATA_DIR / "test.csv")
 train_gen, valid_gen, test_gen = create_generators(training, validation, testing)
 ```
 
-Các script train nhận đường dẫn ảnh gốc. Ví dụ chạy Custom CNN hoặc DenseNet121
-từ thư mục gốc dự án:
+Các script train nhận đường dẫn ảnh gốc và chạy từ thư mục gốc dự án. Nếu dùng
+môi trường `.venv` trên Windows, thay `python` bằng
+`.\.venv\Scripts\python.exe`:
 
 ```powershell
 python -m baseline_models.custom_cnn_train dataset/raw --epochs 20
+python -m baseline_models.efficientnetb7_train dataset/raw --epochs 10
+python -m baseline_models.mobilenetv2_train dataset/raw --epochs 10
 python -m models.densenet121_train dataset/raw --epochs 10
 ```
 
@@ -126,7 +129,6 @@ Các mô hình cơ sở được dùng để so sánh trong thư mục `baseline
 - **Custom CNN:** mạng CNN tự xây dựng gồm các lớp tích chập, pooling, dropout và lớp fully connected.
 - **EfficientNetB7:** mô hình học chuyển giao dựa trên EfficientNetB7.
 - **MobileNetV2:** mô hình nhẹ, phù hợp cho các ứng dụng cần giảm chi phí tính toán.
-- **VGG19:** mô hình CNN sâu dùng để so sánh khả năng trích xuất đặc trưng.
 
 Mỗi mô hình có một file kiến trúc và một file train riêng.
 
@@ -162,6 +164,27 @@ Ghép các ký tự thành văn bản
 
 Các mô hình sau khi huấn luyện được lưu trong thư mục `saved_models/`.
 
+## Đánh giá mô hình
+
+Sau khi train, chạy test riêng cho từng model. Mỗi lệnh đánh giá model trên tập
+`dataset/processed/test.csv` và lưu báo cáo JSON vào `evaluation/output/`:
+
+```powershell
+python -m tests.custom_cnn_test
+python -m tests.efficientnetb7_test
+python -m tests.mobilenetv2_test
+python -m tests.densenet121_test
+```
+
+Sau khi có đủ bốn báo cáo, tạo bảng so sánh và báo cáo tổng hợp:
+
+```powershell
+python -m evaluation.evaluation
+```
+
+Kết quả tổng hợp gồm `model_comparison.csv` và `all_model_reports.json`, cùng
+các báo cáo riêng và `DanhGia.md` trong `evaluation/output/`.
+
 ## Các chỉ số đánh giá
 
 - **Accuracy:** tỷ lệ dự đoán đúng trên tổng số mẫu.
@@ -170,21 +193,19 @@ Các mô hình sau khi huấn luyện được lưu trong thư mục `saved_mode
 - **F1-score:** trung bình điều hòa giữa precision và recall.
 - **Classification report:** bảng tổng hợp precision, recall, F1-score và số lượng mẫu theo từng lớp.
 
-## Đối chiếu với notebook tham chiếu
+## Kết quả đánh giá hiện tại
 
-Notebook `optical-character-recognition-ocr-using-dl.ipynb` là tài liệu đối chiếu;
-chưa sửa notebook. Dự án đã tách được các thành phần chính thành module nhưng
-chưa triển khai đầy đủ luồng OCR từ ảnh đầu vào đến văn bản như notebook.
+Bốn mô hình được so sánh trên cùng tập test gồm 8.520 ảnh. DenseNet121 hiện đứng
+đầu với accuracy **96,16%** và weighted F1 **96,17%**. Xem bảng đầy đủ và nhận xét
+tại [`evaluation/output/DanhGia.md`](evaluation/output/DanhGia.md); báo cáo từng model,
+CSV so sánh và JSON tổng hợp cũng được lưu trong `evaluation/output/`.
 
-| Thành phần | Đối chiếu mã nguồn |
-| --- | --- |
-| Dữ liệu (cell 5, 8, 14, 15) | Cùng bài toán chữ thường tiếng Anh, RGB 32×32, batch 32, dtype int32, augmentation độ sáng; bổ sung kiểm tra ảnh và lưu CSV/ánh xạ nhãn. |
-| Chia dữ liệu (cell 11–12) | Notebook chia 52,5% train / 17,5% validation / 30% test và không phân tầng. Dự án dùng **80% train / 10% test / 10% validation theo yêu cầu mới**, có phân tầng và seed 41. Thứ tự duyệt file được sắp xếp để tái lập. |
-| Kiến trúc mô hình (cell 20, 28, 36, 44, 52) | Có đủ Custom CNN, EfficientNetB7, MobileNetV2, VGG19 và DenseNet121; các lớp phân loại, optimizer và learning rate tương ứng. Custom CNN bỏ ràng buộc batch cố định ở Input. |
-| Huấn luyện (cell 5, 23, 31, 39, 47, 55) | Có script train cho cả 5 mô hình và số epoch mặc định tương ứng, nhưng chưa gắn EarlyStopping, ReduceLROnPlateau hoặc ModelCheckpoint như notebook. Hiện lưu mô hình cuối vào `.keras`, không tự lưu mô hình tốt nhất theo validation. |
-| Đánh giá (cell 25–26, 57–64) | Có hàm classification report và tạo DataFrame so sánh, nhưng script train mới gọi `model.evaluate`; chưa nối luồng xuất report, lịch sử huấn luyện hoặc biểu đồ so sánh. Các chỉ số trong cell 60 là số nhập sẵn, không chứng minh kết quả của mã nguồn hiện tại. |
-| Xử lý ảnh ngoài (cell 67) | Có đọc RGB, grayscale, Otsu, dilation và contour sắp từ trái sang phải. Còn thiếu `extract`: tách từ/ký tự, resize ký tự 16×22 đặt trên nền trắng 32×32 tại (3,3), load model, dự đoán và ghép thành văn bản. |
-| Giao diện và kết quả train | `GUI/` chưa có mã triển khai; chưa có mô hình đã train trong `saved_models/` tại thời điểm kiểm tra. Chưa có bằng chứng thực nghiệm để kết luận đạt accuracy như notebook. |
+## Phạm vi hiện tại
+
+Dự án đã có tiền xử lý dữ liệu, huấn luyện bốn mô hình, đánh giá trên tập test và
+lưu báo cáo. Pipeline OCR hoàn chỉnh cho ảnh bên ngoài — gồm tách vùng chữ, nhận
+dạng từng ký tự và ghép kết quả thành văn bản — cùng giao diện `GUI/` chưa được
+triển khai đầy đủ.
 
 Kiểm thử:
 
